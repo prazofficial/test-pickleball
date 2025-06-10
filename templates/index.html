@@ -1,44 +1,70 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <title>Pickleball Foot Fault Detector</title>
-    <style>
-        video, canvas { width: 640px; height: 480px; }
-    </style>
-</head>
+<head><title>Pickleball Calibrator</title></head>
 <body>
-    <h2>Live Detection</h2>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
-    <p id="status">Loading...</p>
+<h2>Step 1: Click 4 corners of the kitchen line (order matters: TL, TR, BR, BL)</h2>
+<canvas id="cv"></canvas>
+<button id="goCal">Calibrate</button>
+<button id="goDetect">Start Detect</button>
+<p id="status">Ready.</p>
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const statusText = document.getElementById('status');
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stat = document.getElementById('status');
+const img = new Image();
+let pts = [], detecting = false;
 
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-                setInterval(sendFrame, 1000);
-            });
+navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
+  const v = document.createElement('video');
+  v.srcObject=s; v.play();
+  v.onloadeddata=()=>{ cv.width=v.videoWidth; cv.height=v.videoHeight;
+    function loop(){
+      ctx.drawImage(v,0,0);
+      pts.forEach(p=>{ ctx.fillRect(p.x-5,p.y-5,10,10); });
+      requestAnimationFrame(loop);
+    }  
+    loop();
+  }
+});
 
-        function sendFrame() {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataURL = canvas.toDataURL('image/jpeg');
+cv.onclick=e=>{
+  if (detecting) return;
+  pts.push({x:e.offsetX,y:e.offsetY});
+  stat.textContent=`Selected ${pts.length}/4 points`;
+};
 
-            fetch('/detect', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: dataURL })
-            })
-            .then(res => res.json())
-            .then(data => {
-                statusText.innerText = data.result === 'FOOT_FAULT' ? '🚨 Foot Fault Detected!' : '✅ All Good';
-                statusText.style.color = data.result === 'FOOT_FAULT' ? 'red' : 'green';
-            });
-        }
-    </script>
+document.getElementById('goCal').onclick=()=>{
+  if (pts.length!==4){ alert('Pick 4'); return; }
+  fetch('/calibrate',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({points:pts})
+  }).then(r=>r.json()).then(_=>{
+    stat.textContent='Calibrated. Now Detect.';
+  });
+};
+
+document.getElementById('goDetect').onclick=()=>{
+  detecting = true;
+  stat.textContent='Detecting...';
+  setInterval(()=> {
+    cv.toBlob(b=> {
+      const reader=new FileReader();
+      reader.onload=()=> {
+        fetch('/detect',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({image:reader.result})
+        }).then(r=>r.json()).then(d=>{
+          stat.textContent=d.result;
+          stat.style.color = d.result==='FOOT_FAULT'?'red':'green';
+        });
+      };
+      reader.readAsDataURL(b);
+    }, 'image/jpeg');
+  }, 200);
+};
+</script>
 </body>
 </html>
