@@ -15,15 +15,19 @@ def index():
 
 @app.route('/calibrate', methods=['POST'])
 def calibrate():
-    """Accept 4 points from click, calculate homography."""
     global homography, line_y
-    pts = np.array(request.json['points'], dtype='float32')
-    # Define destination in real court space (center origin)
-    dst = np.array([[0,0],[500,0],[500,25],[0,25]], dtype='float32')  # 5m x 0.25m
+    points = request.json['points']
+    pts = np.array([[p['x'], p['y']] for p in points], dtype='float32')
+
+    # Target destination: 5m wide, 0.25m deep rectangle
+    dst = np.array([[0, 0], [500, 0], [500, 25], [0, 25]], dtype='float32')
     H, _ = cv2.findHomography(pts, dst)
     homography = H
-    line_y = 6.096 / 0.0254 * 2.54  # 6 feet (kitchen line) in cm
+
+    # Kitchen line: 7 ft = 213.36 cm from the net
+    line_y = 213.36
     return jsonify(success=True)
+
 
 @app.route('/detect', methods=['POST'])
 def detect():
