@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pickleball Foot Fault Detector</title>
+    <style>
+        video, canvas { width: 640px; height: 480px; }
+    </style>
+</head>
+<body>
+    <h2>Live Detection</h2>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <p id="status">Loading...</p>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                setInterval(sendFrame, 1000);
+            });
+
+        function sendFrame() {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL('image/jpeg');
+
+            fetch('/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataURL })
+            })
+            .then(res => res.json())
+            .then(data => {
+                statusText.innerText = data.result === 'FOOT_FAULT' ? '🚨 Foot Fault Detected!' : '✅ All Good';
+                statusText.style.color = data.result === 'FOOT_FAULT' ? 'red' : 'green';
+            });
+        }
+    </script>
+</body>
+</html>
